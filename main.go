@@ -6,12 +6,15 @@ import (
 	"fmt"
 	"os"
 	"strings"
+	"time"
 )
 
 func main() {
 
 	csvfilename := flag.String("csv", "problems.csv", "a csv file for problems")
 	flag.Parse()
+
+	timelimit := flag.Int("limit", 30, "time limit for quiz in seconds")
 
 	file, err := os.Open(*csvfilename)
 	// csvfilename is a pointer to a string. so we need to deref it to get the string itself
@@ -28,17 +31,35 @@ func main() {
 	}
 
 	problems := parseLines(lines)
+	timer := time.NewTimer(time.Duration(*timelimit) * time.Second)
+	// <- timer.C // newtimer returns a timer struct that has a channel 'C' by def
+	// this blocks current goroutine (main) until the timer fires.
 
 	correct := 0
+
+problemloop:
 	for i, p := range problems {
 		fmt.Printf("Question No. %d : %s = \n", i+1, p.q)
-		var ans string
-		fmt.Scanf("%s\n", &ans)
-		if ans == p.a {
-			correct++
+		answerCh := make(chan string)
+		go func() {
+			var ans string
+			fmt.Scanf("%s\n", &ans)
+			answerCh <- ans
+		}()
+
+		select {
+		case <-timer.C: // conceptually it receives a timestamp repr when the timer fired. but we dont need that here since we only need to know when it got over ( this is confirmed by the channel recieving something ie.) ; so the value is intentionally discarded
+			fmt.Printf("\n you scored %d out of %d.\n", correct, len(problems))
+			break problemloop
+
+		case answer := <-answerCh:
+			if answer == p.a {
+				correct++
+			}
 		}
 	}
 
+	//needed in case user answers all q within timelimit
 	fmt.Printf("you scored %d out of a total %d questions", correct, len(problems))
 
 }
